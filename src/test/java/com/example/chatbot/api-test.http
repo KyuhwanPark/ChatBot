@@ -1,0 +1,11 @@
+### 1. 대화방 생성 (userId=1 인 유저가 '여행 계획' 방을 만듦)
+POST http://localhost:8081/api/chat/conversation?userId=1&title=여행 계획
+Content-Type: application/json
+
+### 2. 메시지 보내기 (생성된 방 ID가 1이라고 가정)
+POST http://localhost:8081/api/chat/1
+Content-Type: application/json
+
+{
+  "content": "제주도 여행 코스 추천해줘"
+}
