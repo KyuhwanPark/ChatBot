@@ -47,26 +47,58 @@ public class ChatService {
         Conversation conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("대화방이 존재하지 않습니다. id=" + conversationId));
 
-        // B. 사용자 질문 DB 저장 (일단 토큰은 0으로 저장)
+        // B. 사용자 질문 DB 저장
         Message userMessage = new Message(conversation, "user", userContent, 0, 0);
         messageRepository.save(userMessage);
 
         // C. 전체 대화 기록 가져오기 (문맥 유지를 위해 필수)
-        // **중요**: 방금 저장한 userMessage도 포함해서 가져와야 AI가 질문을 인식함
         List<Message> history = messageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId);
 
         // D. AI 서비스 호출 (GPT API 통신)
         AiResponseDto aiResponse = openAIService.callGptApi(history);
 
-        // E. AI 답변 DB 저장 (API에서 받은 토큰 사용량 기록)
+        // E. AI 답변 DB 저장
         Message aiMessage = new Message(
                 conversation,
                 "assistant",
-                aiResponse.content(),        // 답변 내용
-                aiResponse.promptTokens(),   // 질문 토큰(비용)
-                aiResponse.completionTokens()// 답변 토큰(비용)
+                aiResponse.content(),
+                aiResponse.promptTokens(),
+                aiResponse.completionTokens()
         );
 
         return messageRepository.save(aiMessage);
+    }
+
+    /**
+     * 3. 대화방 목록 조회 (전체)
+     */
+    @Transactional(readOnly = true)
+    public List<Conversation> findAllConversations() {
+        return conversationRepository.findAll();
+    }
+
+    /**
+     * 4. 대화방 단건 조회 (방 정보만)
+     */
+    @Transactional(readOnly = true)
+    public Conversation findConversationById(Long id) {
+        return conversationRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("대화방이 존재하지 않습니다. id=" + id));
+    }
+
+    /**
+     * 5. 대화방 내 메시지 목록 조회
+     */
+    @Transactional(readOnly = true)
+    public List<Message> findMessagesByConversationId(Long conversationId) {
+        return messageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId);
+    }
+
+    /**
+     * 6. 대화방 삭제 (딸린 메시지도 같이 삭제됨)
+     */
+    @Transactional
+    public void deleteConversation(Long id) {
+        conversationRepository.deleteById(id);
     }
 }

@@ -1,5 +1,6 @@
 package com.example.chatbot.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore; // <--- [1] import 추가
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -8,7 +9,7 @@ import java.util.List;
 
 @Entity
 @Getter @Setter
-@Table(name = "users") // DB 예약어 'user'와 충돌 방지
+@Table(name = "users")
 public class User {
 
     @Id
@@ -16,7 +17,7 @@ public class User {
     private Long id;
 
     @Column(nullable = false, unique = true)
-    private String email; // 로그인 ID 역할
+    private String email;
 
     @Column(nullable = false)
     private String password;
@@ -24,7 +25,7 @@ public class User {
     private String username;
 
     // User : Conversation = 1 : N
-    // 유저 한 명이 여러 개의 대화방을 가질 수 있음
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
+    @JsonIgnore // 순환 참조 끊기
     private List<Conversation> conversations = new ArrayList<>();
 }

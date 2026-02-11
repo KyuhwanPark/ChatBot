@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>나만의 AI 챗봇 (REST API)</title>
+  <style>
+    body { font-family: 'Noto Sans KR', sans-serif; background-color: #f4f4f9; display: flex; height: 100vh; margin: 0; }
+    #sidebar { width: 250px; background-color: #343a40; color: white; padding: 20px; display: flex; flex-direction: column; }
+    #chat-container { flex: 1; display: flex; flex-direction: column; padding: 20px; }
+
+    /* 목록 스타일 */
+    .conv-item { padding: 10px; cursor: pointer; border-bottom: 1px solid #495057; display: flex; justify-content: space-between; align-items: center; }
+    .conv-item:hover { background-color: #495057; }
+    .conv-item.active { background-color: #007bff; }
+
+    /* 채팅창 스타일 */
+    #messages { flex: 1; border: 1px solid #ddd; background: white; border-radius: 8px; padding: 20px; overflow-y: auto; margin-bottom: 20px; }
+    .message { margin-bottom: 10px; padding: 10px; border-radius: 10px; max-width: 70%; word-wrap: break-word; }
+    .message.user { background-color: #007bff; color: white; align-self: flex-end; margin-left: auto; }
+    .message.assistant { background-color: #e9ecef; color: black; align-self: flex-start; }
+
+    /* 입력창 스타일 */
+    #input-area { display: flex; gap: 10px; }
+    input[type="text"] { flex: 1; padding: 10px; border-radius: 5px; border: 1px solid #ccc; }
+    button { padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    button:hover { background-color: #0056b3; }
+    button.delete-btn { background-color: #dc3545; padding: 2px 8px; font-size: 0.8em; margin-left: 10px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h3>💬 대화방 목록</h3>
+  <div style="margin-bottom: 20px; display: flex; gap: 5px;">
+    <input type="text" id="newTitle" placeholder="새 방 제목" style="width: 60%;">
+    <button onclick="createConversation()" style="width: 35%; padding: 5px;">+</button>
+  </div>
+  <div id="conversation-list">
+  </div>
+</div>
+
+<div id="chat-container">
+  <h2 id="room-title">대화방을 선택하세요</h2>
+  <div id="messages" style="display: flex; flex-direction: column;">
+  </div>
+  <div id="input-area" style="display: none;">
+    <input type="text" id="userContent" placeholder="메시지를 입력하세요..." onkeypress="handleEnter(event)">
+    <button onclick="sendMessage()">전송</button>
+  </div>
+</div>
+
+<script>
+  // [중요] 컨트롤러에서 설정한 기본 경로 (복수형 통일)
+  const API_BASE = "http://localhost:8081/api/conversations";
+  let currentChatId = null;
+
+  // 1. 대화방 목록 불러오기 (GET /api/conversations)
+  async function loadConversations() {
+    try {
+      const res = await fetch(API_BASE);
+      if (!res.ok) throw new Error("목록 불러오기 실패");
+
+      const list = await res.json();
+      const container = document.getElementById("conversation-list");
+      container.innerHTML = "";
+
+      list.forEach(conv => {
+        const div = document.createElement("div");
+        div.className = "conv-item";
+        if(currentChatId === conv.id) div.classList.add("active");
+
+        // 제목 + 삭제 버튼
+        div.innerHTML = `
+                        <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${conv.title}</span> 
+                        <button class="delete-btn" onclick="deleteConversation(${conv.id}, event)">x</button>
+                    `;
+        div.onclick = () => selectConversation(conv.id, conv.title);
+        container.appendChild(div);
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  // 2. 대화방 선택 & 메시지 불러오기 (GET /api/conversations/{id}/messages)
+  async function selectConversation(id, title) {
+    currentChatId = id;
+    document.getElementById("room-title").innerText = title;
+    document.getElementById("input-area").style.display = "flex";
+
+    // UI 활성화 표시 업데이트
+    loadConversations();
+
+    // 메시지 로드
+    try {
+      const res = await fetch(`${API_BASE}/${id}/messages`);
+      const messages = await res.json();
+      const msgContainer = document.getElementById("messages");
+      msgContainer.innerHTML = "";
+
+      messages.forEach(msg => {
+        appendMessage(msg.role, msg.content);
+      });
+    } catch (e) {
+      console.error("메시지 로드 실패", e);
+    }
+  }
+
+  // 3. 화면에 메시지 추가 (UI)
+  function appendMessage(role, content) {
+    const container = document.getElementById("messages");
+    const div = document.createElement("div");
+    div.className = `message ${role}`;
+    div.innerText = content;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  // 4. 대화방 생성 (POST /api/conversations)
+  async function createConversation() {
+    const title = document.getElementById("newTitle").value;
+    if(!title) return alert("제목을 입력하세요!");
+
+    const encodedTitle = encodeURIComponent(title);
+
+    try {
+      // userId=1 고정 (DB에 유저가 있어야 함)
+      const res = await fetch(`${API_BASE}?userId=1&title=${encodedTitle}`, { method: "POST" });
+
+      if (res.ok) {
+        const newConversationId = await res.json();
+        document.getElementById("newTitle").value = "";
+
+        // 목록 갱신 및 바로 입장
+        await loadConversations();
+        selectConversation(newConversationId, title);
+      } else {
+        alert("생성 실패! (서버 로그 확인 필요 - 유저가 DB에 있나요?)");
+      }
+    } catch (error) {
+      alert("서버 연결 실패!");
+    }
+  }
+
+  // 5. 메시지 전송 (POST /api/conversations/{id}/messages)
+  async function sendMessage() {
+    const input = document.getElementById("userContent");
+    const content = input.value;
+    if(!content) return;
+
+    appendMessage("user", content);
+    input.value = "";
+
+    try {
+      const res = await fetch(`${API_BASE}/${currentChatId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: content })
+      });
+
+      if(res.ok) {
+        const data = await res.json();
+        appendMessage("assistant", data.content); // data.data.content가 아니라 data.content (ResponseDto 구조 확인)
+      } else {
+        appendMessage("assistant", "⚠️ 오류가 발생했습니다.");
+      }
+    } catch (e) {
+      appendMessage("assistant", "⚠️ 서버와 연결이 끊겼습니다.");
+    }
+  }
+
+  // 6. 대화방 삭제 (DELETE /api/conversations/{id})
+  async function deleteConversation(id, event) {
+    event.stopPropagation();
+    if(confirm("정말 삭제하시겠습니까?")) {
+      await fetch(`${API_BASE}/${id}`, { method: "DELETE" });
+
+      if(currentChatId === id) {
+        document.getElementById("messages").innerHTML = "";
+        document.getElementById("room-title").innerText = "대화방을 선택하세요";
+        document.getElementById("input-area").style.display = "none";
+        currentChatId = null;
+      }
+      loadConversations();
+    }
+  }
+
+  function handleEnter(e) {
+    if(e.key === "Enter") sendMessage();
+  }
+
+  // 시작 시 목록 로드
+  loadConversations();
+</script>
+</body>
+</html>

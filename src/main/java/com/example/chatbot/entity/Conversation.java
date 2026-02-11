@@ -1,5 +1,6 @@
 package com.example.chatbot.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -9,27 +10,27 @@ import java.util.List;
 
 @Entity
 @Getter @Setter
-@Table(name="conversations")
+@Table(name = "conversations") // <--- [1] 이게 빠져서 에러가 났습니다! (다시 추가)
 public class Conversation {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String title; // 대화방 주제 (예: "여행 계획 짜줘")
+    private String title;
 
     private LocalDateTime createdAt;
 
-    // [추가된 부분] N : 1 관계 설정
+    // User: Conversation = 1: N
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id") // 외래키 컬럼명 지정
+    @JoinColumn(name = "user_id")
+    @JsonIgnore // <--- [2] 아까 에러 잡았던 것도 확실히 있는지 확인!
     private User user;
 
-    // Conversation : Message = 1 : N (기존 구조 유지)
     @OneToMany(mappedBy = "conversation", cascade = CascadeType.ALL)
     private List<Message> messages = new ArrayList<>();
 
-    // 편의 메서드 (연관관계 세팅용)
+    // 편의 메서드
     public void setUser(User user) {
         this.user = user;
         user.getConversations().add(this);
