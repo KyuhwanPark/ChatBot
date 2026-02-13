@@ -5,9 +5,12 @@ import com.example.chatbot.dto.ChatResponseDto;
 import com.example.chatbot.entity.Conversation;
 import com.example.chatbot.entity.Message;
 import com.example.chatbot.service.ChatService;
+import com.example.chatbot.service.OpenAIService; // 추가됨
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType; // 추가됨
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux; // 추가됨
 
 import java.util.List;
 
@@ -17,6 +20,7 @@ import java.util.List;
 public class ChatController {
 
     private final ChatService chatService;
+    private final OpenAIService openAIService; // 직접 호출을 위해 추가됨
 
     // 1. 대화방 생성 (POST /api/conversations)
     @PostMapping
@@ -25,12 +29,18 @@ public class ChatController {
         return ResponseEntity.ok(conversation.getId());
     }
 
-    // 2. 메시지 전송 (POST /api/conversations/{id}/messages)
-    // 의미: {id}번 대화방에 메시지를 생성한다
+    // 2. 메시지 전송 (기존 단건 응답 방식)
     @PostMapping("/{conversationId}/messages")
     public ResponseEntity<ChatResponseDto> sendMessage(@PathVariable Long conversationId, @RequestBody ChatRequestDto requestDto) {
         Message aiMessage = chatService.processMessage(conversationId, requestDto.getContent());
         return ResponseEntity.ok(new ChatResponseDto(aiMessage));
+    }
+
+    // [New] SSE 스트리밍 엔드포인트
+    // 사용법: GET /api/conversations/stream?message=안녕
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<String> chatStream(@RequestParam String message) {
+        return openAIService.chatStream(message);
     }
 
     // 3. 대화방 목록 조회 (GET /api/conversations)

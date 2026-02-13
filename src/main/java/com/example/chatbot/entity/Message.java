@@ -1,45 +1,43 @@
 package com.example.chatbot.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore; // 1. 이 줄 추가
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
+import lombok.Setter;
+
 import java.time.LocalDateTime;
 
 @Entity
-@Getter
-@NoArgsConstructor
 @Table(name = "messages")
+@Getter
+@Setter
+@NoArgsConstructor
 public class Message {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Conversation과 연결 (N:1)
+    @JsonIgnore // 2. 이 줄 추가! (여기가 핵심입니다)
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "conversation_id", nullable = false)
+    @JoinColumn(name = "conversation_id")
     private Conversation conversation;
 
     @Column(nullable = false)
-    private String role; // user, assistant, system
+    private String role; // user or assistant
 
     @Column(columnDefinition = "TEXT", nullable = false)
-    private String content; // 긴 대화 내용
+    private String content;
 
-    // --- 비용 관리용 컬럼 ---
-    @Column(name = "prompt_tokens")
-    private int promptTokens;
+    private Integer promptTokens;
 
-    @Column(name = "completion_tokens")
-    private int completionTokens;
-    // ---------------------
+    private Integer completionTokens;
 
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    @Column(updatable = false)
+    private LocalDateTime createdAt = LocalDateTime.now();
 
-    public Message(Conversation conversation, String role, String content, int promptTokens, int completionTokens) {
+    public Message(Conversation conversation, String role, String content, Integer promptTokens, Integer completionTokens) {
         this.conversation = conversation;
         this.role = role;
         this.content = content;

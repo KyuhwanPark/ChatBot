@@ -22,3 +22,6 @@ GET http://localhost:8081/api/conversations/5/messages
 
 ### 6.대화방 삭제 (DELETE /api/conversations/{id})
 DELETE http://localhost:8081/api/conversations/5
+
+### 7. 존재하지 않는 방 조회
+GET http://localhost:8081/api/conversations/999
