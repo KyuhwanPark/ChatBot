@@ -40,3 +40,11 @@ springdoc:
   api-docs:
     path: /v3/api-docs
   show-actuator: true
+
+# 6. 앱 전용 설정 (보안 & 제한)
+app:
+  auth:
+    api-key: "my-secret-api-key-1234" # 클라이언트가 헤더에 담아 보내야 할 비밀키
+  rate-limit:
+    capacity: 10      # 1분(60초) 동안 허용할 최대 요청 횟수
+    duration: 60      # 제한 시간을 60초로 설정
