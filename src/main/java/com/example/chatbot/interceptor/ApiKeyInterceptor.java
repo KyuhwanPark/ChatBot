@@ -19,7 +19,13 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        // 1. 헤더에서 API 키 확인
         String clientApiKey = request.getHeader("x-api-key");
+
+        // 2. 헤더에 없으면 쿼리 파라미터에서 확인 (SSE EventSource 호환성용)
+        if (clientApiKey == null) {
+            clientApiKey = request.getParameter("apiKey");
+        }
 
         if (clientApiKey == null || !clientApiKey.equals(validApiKey)) {
             throw new IllegalArgumentException("유효하지 않은 API Key입니다.");

@@ -5,11 +5,11 @@ import com.example.chatbot.entity.Message;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.ParameterizedTypeReference; // 추가됨
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.codec.ServerSentEvent; // 추가됨
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -31,7 +31,7 @@ public class OpenAIService {
     private final RestTemplate restTemplate = new RestTemplate();
     private final String OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
-    // 1. 일반 질문 (동기 방식 - 유지)
+    // 1. 일반 질문 (동기 방식 - 단건 응답용)
     public AiResponseDto callGptApi(List<Message> history) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -67,7 +67,7 @@ public class OpenAIService {
         return new AiResponseDto(content, promptTokens, completionTokens);
     }
 
-    // 2. 스트리밍 질문 (WebFlux - 수정됨!)
+    // 2. 스트리밍 질문 - 단일 문자열 버전 (ChatController의 /stream API 용)
     public Flux<String> chatStream(String userMessage) {
         WebClient webClient = WebClient.builder()
                 .baseUrl(OPENAI_URL)
@@ -83,15 +83,46 @@ public class OpenAIService {
         return webClient.post()
                 .bodyValue(body)
                 .retrieve()
-                // [핵심 변경] String.class 대신 ServerSentEvent로 받아서 알맹이만 쏙 뺍니다.
                 .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
                 .map(sse -> {
                     String data = sse.data();
-                    // 데이터가 없거나 끝났으면 그대로 반환
                     if (data == null || data.equals("[DONE]")) {
                         return "[DONE]";
                     }
-                    // 순수 JSON 문자열만 반환 (Controller가 알아서 "data:" 붙여줌)
+                    return data;
+                });
+    }
+
+    // 3. 스트리밍 질문 - 대화 기록 리스트 버전 (ChatService의 컨텍스트 스트리밍 용)
+    public Flux<String> chatStream(List<Message> history) {
+        WebClient webClient = WebClient.builder()
+                .baseUrl(OPENAI_URL)
+                .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
+                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .build();
+
+        List<Map<String, String>> messages = new ArrayList<>();
+        for (Message msg : history) {
+            Map<String, String> messageMap = new HashMap<>();
+            messageMap.put("role", msg.getRole());
+            messageMap.put("content", msg.getContent());
+            messages.add(messageMap);
+        }
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("model", "gpt-3.5-turbo");
+        body.put("stream", true);
+        body.put("messages", messages);
+
+        return webClient.post()
+                .bodyValue(body)
+                .retrieve()
+                .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
+                .map(sse -> {
+                    String data = sse.data();
+                    if (data == null || data.equals("[DONE]")) {
+                        return "[DONE]";
+                    }
                     return data;
                 });
     }

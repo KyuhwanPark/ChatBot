@@ -12,6 +12,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -43,35 +44,24 @@ public class ChatService {
     }
 
     /**
-     * 2. 메시지 처리 (질문 저장 -> AI 요청 -> 답변 저장)
-     * [수정] 최근 N개 메시지만 컨텍스트로 사용하도록 변경됨
+     * 2. 메시지 처리 (일반 단건 응답)
      */
     @Transactional
     public Message processMessage(Long conversationId, String userContent) {
-        // A. 대화방 조회
         Conversation conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("대화방이 존재하지 않습니다. id=" + conversationId));
 
-        // B. 사용자 질문 DB 저장
         Message userMessage = new Message(conversation, "user", userContent, 0, 0);
         messageRepository.save(userMessage);
 
-        // C. 컨텍스트 조회 (최근 3개만)
-        int N = 3; // 최근 3개 메시지 (질문 포함)
+        int N = 3;
         Pageable limit = PageRequest.of(0, N);
-
-        // 1. DB에서 최신순으로 N개 가져옴 (예: 10, 9, 8 ... 1)
         List<Message> recentMessages = messageRepository.findRecentMessages(conversationId, limit);
-
-        // 2. GPT에게는 시간 순서대로 줘야 하므로 뒤집음 (예: 1, 2 ... 10)
-        // 불변 리스트일 수 있으므로 새 리스트로 감싸서 뒤집기
         List<Message> history = new ArrayList<>(recentMessages);
         Collections.reverse(history);
 
-        // D. AI 서비스 호출 (GPT API 통신)
         AiResponseDto aiResponse = openAIService.callGptApi(history);
 
-        // E. AI 답변 DB 저장
         Message aiMessage = new Message(
                 conversation,
                 "assistant",
@@ -81,6 +71,53 @@ public class ChatService {
         );
 
         return messageRepository.save(aiMessage);
+    }
+
+    /**
+     * 2-1. 메시지 처리 (스트리밍 방식 & 문맥 유지 저장)
+     */
+    @Transactional
+    public Flux<String> processStreamMessage(Long conversationId, String userContent) {
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new IllegalArgumentException("대화방이 존재하지 않습니다. id=" + conversationId));
+
+        // 1. 사용자 질문 DB 저장
+        Message userMessage = new Message(conversation, "user", userContent, 0, 0);
+        messageRepository.save(userMessage);
+
+        // 2. 컨텍스트 조회 (최근 5개로 여유있게 설정)
+        List<Message> recentMessages = messageRepository.findRecentMessages(conversationId, PageRequest.of(0, 5));
+        List<Message> history = new ArrayList<>(recentMessages);
+        Collections.reverse(history);
+
+        // 3. AI 스트리밍 요청
+        Flux<String> stream = openAIService.chatStream(history);
+
+        // 4. 비동기로 AI 응답을 누적할 빌더 생성
+        StringBuilder aiResponseContent = new StringBuilder();
+
+        return stream.doOnNext(data -> {
+            // JSON 응답에서 실시간 텍스트 조각만 추출하여 누적
+            if (!"[DONE]".equals(data) && data != null) {
+                try {
+                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                    com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(data);
+                    com.fasterxml.jackson.databind.JsonNode choices = root.get("choices");
+                    if (choices != null && choices.isArray() && choices.size() > 0) {
+                        com.fasterxml.jackson.databind.JsonNode delta = choices.get(0).get("delta");
+                        if (delta != null && delta.has("content")) {
+                            aiResponseContent.append(delta.get("content").asText());
+                        }
+                    }
+                } catch (Exception e) {
+                    // 파싱 에러 무시
+                }
+            }
+        }).doOnComplete(() -> {
+            // 5. 스트리밍 종료 후 AI 답변 최종 DB 저장 (문맥 유지용)
+            Message aiMessage = new Message(conversation, "assistant", aiResponseContent.toString(), 0, 0);
+            messageRepository.save(aiMessage);
+        });
     }
 
     /**
@@ -109,7 +146,7 @@ public class ChatService {
     }
 
     /**
-     * 6. 대화방 삭제 (딸린 메시지도 같이 삭제됨)
+     * 6. 대화방 삭제
      */
     @Transactional
     public void deleteConversation(Long id) {

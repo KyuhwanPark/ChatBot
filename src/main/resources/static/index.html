@@ -15,7 +15,7 @@
 
     /* 채팅창 스타일 */
     #messages { flex: 1; border: 1px solid #ddd; background: white; border-radius: 8px; padding: 20px; overflow-y: auto; margin-bottom: 20px; }
-    .message { margin-bottom: 10px; padding: 10px; border-radius: 10px; max-width: 70%; word-wrap: break-word; }
+    .message { margin-bottom: 10px; padding: 10px; border-radius: 10px; max-width: 70%; word-wrap: break-word; white-space: pre-wrap; }
     .message.user { background-color: #007bff; color: white; align-self: flex-end; margin-left: auto; }
     .message.assistant { background-color: #e9ecef; color: black; align-self: flex-start; }
 
@@ -51,12 +51,21 @@
 
 <script>
   const API_BASE = "http://localhost:8081/api/conversations";
+  const API_KEY = "my-secret-api-key-1234"; // application.yml과 일치시킵니다.
   let currentChatId = null;
+
+  // fetch 요청 시 기본 헤더 셋업 헬퍼 함수
+  function getHeaders() {
+    return {
+      "x-api-key": API_KEY,
+      "Content-Type": "application/json"
+    };
+  }
 
   // 1. 대화방 목록 불러오기
   async function loadConversations() {
     try {
-      const res = await fetch(API_BASE);
+      const res = await fetch(API_BASE, { headers: getHeaders() });
       if (!res.ok) throw new Error("목록 불러오기 실패");
 
       const list = await res.json();
@@ -69,9 +78,9 @@
         if(currentChatId === conv.id) div.classList.add("active");
 
         div.innerHTML = `
-                        <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${conv.title}</span>
-                        <button class="delete-btn" onclick="deleteConversation(${conv.id}, event)">x</button>
-                    `;
+            <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${conv.title}</span>
+            <button class="delete-btn" onclick="deleteConversation(${conv.id}, event)">x</button>
+        `;
         div.onclick = () => selectConversation(conv.id, conv.title);
         container.appendChild(div);
       });
@@ -89,7 +98,7 @@
     loadConversations();
 
     try {
-      const res = await fetch(`${API_BASE}/${id}/messages`);
+      const res = await fetch(`${API_BASE}/${id}/messages`, { headers: getHeaders() });
       const messages = await res.json();
       const msgContainer = document.getElementById("messages");
       msgContainer.innerHTML = "";
@@ -120,7 +129,10 @@
     const encodedTitle = encodeURIComponent(title);
 
     try {
-      const res = await fetch(`${API_BASE}?userId=1&title=${encodedTitle}`, { method: "POST" });
+      const res = await fetch(`${API_BASE}?userId=1&title=${encodedTitle}`, {
+        method: "POST",
+        headers: getHeaders()
+      });
 
       if (res.ok) {
         const newConversationId = await res.json();
@@ -135,8 +147,13 @@
     }
   }
 
-  // 5. 메시지 전송 (SSE 스트리밍 방식 적용됨)
+  // 5. 메시지 전송 (대화방 기반 SSE 스트리밍 방식 적용)
   function sendMessage() {
+    if (!currentChatId) {
+      alert("대화방을 먼저 생성하거나 선택해주세요.");
+      return;
+    }
+
     const input = document.getElementById("userContent");
     const content = input.value;
     if(!content) return;
@@ -150,8 +167,8 @@
     aiMessageDiv.className = "message assistant";
     document.getElementById("messages").appendChild(aiMessageDiv);
 
-    // SSE 연결 시작 (GET 방식)
-    const eventSource = new EventSource(`${API_BASE}/stream?message=${encodeURIComponent(content)}`);
+    // SSE 연결 시작 (GET 방식) - EventSource는 커스텀 헤더를 보낼 수 없으므로 쿼리 파라미터로 apiKey 전달
+    const eventSource = new EventSource(`${API_BASE}/${currentChatId}/stream?message=${encodeURIComponent(content)}&apiKey=${API_KEY}`);
 
     eventSource.onmessage = function(event) {
       const rawData = event.data;
@@ -191,7 +208,10 @@
   async function deleteConversation(id, event) {
     event.stopPropagation();
     if(confirm("정말 삭제하시겠습니까?")) {
-      await fetch(`${API_BASE}/${id}`, { method: "DELETE" });
+      await fetch(`${API_BASE}/${id}`, {
+        method: "DELETE",
+        headers: getHeaders()
+      });
 
       if(currentChatId === id) {
         document.getElementById("messages").innerHTML = "";

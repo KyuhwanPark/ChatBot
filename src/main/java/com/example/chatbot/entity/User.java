@@ -1,6 +1,6 @@
 package com.example.chatbot.entity;
 
-import com.fasterxml.jackson.annotation.JsonIgnore; // <--- [1] import 추가
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -19,10 +19,19 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false)
+    // 소셜 로그인은 비밀번호가 없으므로 nullable = false 조건을 제거합니다.
     private String password;
 
     private String username;
+
+    // [New] 소셜 로그인 제공자 (예: "google", "kakao")
+    private String provider;
+
+    // [New] 소셜 로그인 제공자에서 발급한 고유 ID
+    private String providerId;
+
+    // [New] 권한 (기본값 설정)
+    private String role = "ROLE_USER";
 
     // User : Conversation = 1 : N
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
