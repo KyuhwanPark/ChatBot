@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # 1. MySQL 컨테이너
+  mysql:
+    image: mysql:8.0
+    container_name: chatbot-mysql
+    environment:
+      MYSQL_DATABASE: chatbot_db
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD} # <-- 수정됨
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  # 2. Redis 컨테이너
+  redis:
+    image: redis:alpine
+    container_name: chatbot-redis
+    ports:
+      - "6379:6379"
+
+  # 3. Spring Boot 애플리케이션 컨테이너
+  chatbot-app:
+    build: .
+    container_name: chatbot-app
+    restart: on-failure
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/chatbot_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD} # <-- 수정됨
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - APP_AUTH_API_KEY=${CUSTOM_API_KEY} # <-- 추가됨 (.env의 값을 스프링부트로 전달)
+    depends_on:
+      - mysql
+      - redis
+
+volumes:
+  mysql_data:
