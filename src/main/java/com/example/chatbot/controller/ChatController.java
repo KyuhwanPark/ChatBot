@@ -58,9 +58,12 @@ public class ChatController {
     }
 
     @Operation(summary = "SSE 스트리밍 채팅", description = "OpenAI API를 활용해 실시간 스트리밍 답변을 제공합니다.")
-    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @GetMapping(value = "/{conversationId}/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> chatStream(
+            @Parameter(description = "대화방 ID") @PathVariable Long conversationId,
             @Parameter(description = "사용자 질문 내용") @RequestParam String message) {
+
+        // TODO: 필요하다면 conversationId를 활용해 대화 내역을 저장하거나 불러오는 로직을 추가할 수 있습니다.
         return openAIService.chatStream(message);
     }
 
